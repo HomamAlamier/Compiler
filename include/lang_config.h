@@ -1,0 +1,9 @@
+#ifndef LANG_CONFIG_H
+#define LANG_CONFIG_H
+
+
+#define LANG_VERSION_MAJOR 0
+#define LANG_VERSION_MINOR 0
+#define LANG_VERSION_BUILD 1
+
+#endif // LANG_CONFIG_H

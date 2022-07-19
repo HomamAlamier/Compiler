@@ -1,0 +1,27 @@
+// One list comment test
+
+/*
+
+Muli line
+comment test
+
+*/
+
+
+int sum(int a, int b)
+{
+    return a + b;
+}
+
+// int sum(int a, int b);
+
+int main(int argc, int argv)
+{
+    int test = 100;
+    float test2 = 100.0;
+    int add = 1 + 2 + test;
+    print("Hello, World !");
+    return 0 + 0;
+}
+
+// int main();
