@@ -1,0 +1,19 @@
+From 21-7-2022 (Doing tasks in order)
+
+[Constants]
+    - Ability to declare constants and use them.
+[Core]
+    - Ability to write a function with assembly
+[Assembler]
+    - Getting "Hello World" example to compile and run
+[Analyzer]
+    - Type checking ?
+[Preprocessor]
+    - "Include" functionality
+    - "C Like" defines
+[Code]
+    - Clean up the code and do optimiztion when it can be done
+[Core]
+    - Make something like standard library
+[Assembler]
+    - Linkage with "C" code and libraries
