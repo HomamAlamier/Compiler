@@ -13,6 +13,13 @@ string_t* init_string(const string_char_type* value) {
     return this;
 }
 
+string_t* init_string_no_cpy(string_char_type* value) {
+    string_t* this = calloc(1, sizeof(struct string));
+    this->size = strlen(value);
+    this->buffer = value;
+    return this;
+}
+
 void string_free(string_t** string) {
     free((*string)->buffer);
     free(*string);
@@ -39,9 +46,9 @@ string_view_t* string_substr_view(string_t* string, size_t pos, size_t size) {
 
 string_t* string_substr(string_t* string, size_t pos, size_t size) {
     string_t* this = calloc(1, sizeof(struct string));
-    if (size == 0) {
+    /*if (size == 0) {
         size = string->size - pos;
-    }
+    }*/
     this->buffer = calloc(size + 1, sizeof(string_char_type));
     strncpy(this->buffer, &string->buffer[pos], size);
     this->size = size;
@@ -79,20 +86,35 @@ string_t* string_concat_view(string_t* lhs, string_view_t* rhs) {
     return this;
 }
 
-size_t string_index_of(string_t* this, const string_char_type* s) {
+size_t string_index_of(string_t* this, const string_char_type* s, size_t pos) {
     size_t len = strlen(s);
-    for(size_t i = 0; i < this->size; ++i)
+    for(size_t i = pos; i < this->size; ++i)
         if (strncmp(&this->buffer[i], s, len) == 0)
             return i;
     return this->size + 1;
 }
 
-int string_cmp(string_t* lhs, string_t* rhs) {
-    return strcmp(lhs->buffer, rhs->buffer);
+size_t string_last_index_of(string_t* this, const string_char_type* s) {
+    size_t old = 0, ind = 0;
+    do {
+        ind = string_index_of(this, s, old + 1);
+        if (ind < this->size) {
+            old = ind;
+        }
+    } while (ind < this->size);
+    return old;
 }
 
-int string_cmp_str(string_t* lhs, const string_char_type* rhs) {
-    return strcmp(lhs->buffer, rhs);
+bool string_cmp(string_t* lhs, string_t* rhs) {
+    if (lhs == NULL || rhs == NULL)
+        return false;
+    return strcmp(lhs->buffer, rhs->buffer) == 0;
+}
+
+bool string_cmp_str(string_t* lhs, const string_char_type* rhs) {
+    if (lhs == NULL || rhs == NULL)
+        return false;
+    return strcmp(lhs->buffer, rhs) == 0;
 }
 
 void string_print( string_t* string, const char* format) {
@@ -125,6 +147,52 @@ void string_append_chr(string_t* string, string_char_type value) {
     string->buffer[string->size] = value;
     string->buffer[string->size + 1] = '\0';
     string->size++;
+}
+
+void string_erase(string_t* string, size_t start, size_t end) {
+    if (start >= string->size || end >= string->size || end - start > string->size) {
+        return;
+    }
+
+    size_t len = end - start;
+    string_char_type* buffer = calloc((string->size - len) + 1, sizeof(string_char_type));
+    memcpy(buffer, string->buffer, start);
+    memcpy(&buffer[start], &string->buffer[end], string->size - end);
+    buffer[string->size - len] = '\0';
+    free(string->buffer);
+    string->buffer = buffer;
+    string->size -= len;
+}
+
+void string_insert(string_t* string, string_t* value, size_t pos) {
+    if (value == NULL || string == NULL || value->size == 0) {
+        return;
+    }
+    size_t len = string->size + value->size;
+    string_char_type* buffer = calloc(len + 1, sizeof(string_char_type));
+    memcpy(buffer, string->buffer, pos);
+    memcpy(&buffer[pos], value->buffer, value->size);
+    memcpy(&buffer[pos + value->size], &string->buffer[pos], string->size - pos);
+    buffer[len] = '\0';
+    free(string->buffer);
+    string->buffer = buffer;
+    string->size = len;
+}
+
+void string_insert_str(string_t* string, const string_char_type* value, size_t pos) {
+    size_t size = strlen(value);
+    if (value == NULL || string == NULL || size == 0) {
+        return;
+    }
+    size_t len = string->size + size;
+    string_char_type* buffer = calloc(len + 1, sizeof(string_char_type));
+    memcpy(buffer, string->buffer, pos);
+    memcpy(&buffer[pos], value, size);
+    memcpy(&buffer[pos + size], &string->buffer[pos], string->size - pos);
+    buffer[len] = '\0';
+    free(string->buffer);
+    string->buffer = buffer;
+    string->size = len;
 }
 
 string_t* string_format(const string_char_type* fmt, ...) {

@@ -7,6 +7,7 @@
 enum token_type {
     TOKEN_TYPE_IDENTIFIER,
     TOKEN_TYPE_RETURN,
+    TOKEN_TYPE_CONST,
     TOKEN_TYPE_EOF,
 
     // Seperators
@@ -14,6 +15,8 @@ enum token_type {
     TOKEN_TYPE_RPAREN,
     TOKEN_TYPE_LBRACE,
     TOKEN_TYPE_RBRACE,
+    TOKEN_TYPE_LBRAKET,
+    TOKEN_TYPE_RBRAKET,
     TOKEN_TYPE_COMMA,
     TOKEN_TYPE_SEMI,
 
@@ -49,6 +52,7 @@ typedef struct lexer_token {
     string_t* value;
     size_t col;
     size_t row;
+    string_t* filename;
 } lexer_token_t;
 
 
@@ -64,7 +68,7 @@ typedef struct lexer {
 const char* token_type_str(int type);
 
 lexer_t* init_lexer(const char* filename, string_t* src);
-lexer_token_t* init_lexer_token(string_t* value, int type, size_t col, size_t row);
+lexer_token_t* init_lexer_token(string_t* value, int type, size_t col, size_t row, string_t* filename);
 void lexer_free(lexer_t**);
 void dump_lexer_token(lexer_token_t* token);
 

@@ -17,6 +17,7 @@ parser_t* init_parser(lexer_t* lexer) {
     parser_t* parser = calloc(1, sizeof(struct parser));
     parser->lexer = lexer;
     parser->token = lexer_get_token(lexer);
+    parser->last_expr = NULL;
     return parser;
 }
 
@@ -49,30 +50,36 @@ void parser_poll(parser_t* parser, int type) {
 inline void parser_report_and_exit(parser_t* parser, int error, void* data) {
     switch (error) {
     case PARSER_ERROR_UNEXPECTED_TOKEN:
-        LOG_PUSH_ARGS("%s:(%d:%d): Unexpected token %s (expected %s)",
+        LOG_PUSH_ARGS("%s:(%d:%d): Unexpected token %s [%s] (expected %s)",
                  parser->lexer->filename->buffer, parser->lexer->row, parser->lexer->col - 1,
-                 token_type_str(parser->token->type), token_type_str(*(int*)data));
+                 token_type_str(parser->token->type), parser->token->value->buffer, token_type_str(*(int*)data));
         break;
     case PARSER_ERROR_UNHANDLED_EXPER:
         LOG_PUSH_ARGS("%s:(%d:%d): Unhandled experssion %s (value = `%s`)",
                  parser->lexer->filename->buffer, parser->lexer->row, parser->lexer->col - 1,
                  token_type_str(parser->token->type), parser->token->value->buffer);
         break;
+    case PARSER_ERROR_ASM_FUNCTION_INVALID_BODY:
+        LOG_PUSH_ARGS("%s:(%d:%d): in asm function `%s`: body should only contains strings (unexpected `%s`)",
+                 parser->lexer->filename->buffer, parser->lexer->row, parser->lexer->col - 1,
+                 data, token_type_str(parser->token->type));
+        break;
     }
     exit(1);
 }
 
-ast_t* parser_parse_arglist(parser_t* parser) {
+ast_t* parser_parse_arglist(parser_t* parser, ast_t* parent) {
     parser_poll(parser, TOKEN_TYPE_LPAREN);
 
     ast_t* tree = init_ast(AST_TYPE_COMPOUND);
+    tree->token = parser->token;
 
     if (parser->token->type != TOKEN_TYPE_RPAREN) {
 
-        list_push(tree->childs, parser_parse_expr(parser));
+        list_push(tree->childs, parser_parse_arth(parser, parent));
 
 
-        if (CAST(ast_t*, tree->childs->bottom->data)->type ==  AST_TYPE_COMPOUND) {
+        /*if (CAST(ast_t*, tree->childs->bottom->data)->type ==  AST_TYPE_COMPOUND) {
             LOG_PUSH_ARGS("found args (name = %s, type = %s)",
                           CAST(ast_t*, tree->childs->bottom->data)->name->buffer,
                           CAST(ast_t*, tree->childs->bottom->data)->data_type->name->buffer);
@@ -80,18 +87,42 @@ ast_t* parser_parse_arglist(parser_t* parser) {
             LOG_PUSH_ARGS("found args (name = %s, type = %s)",
                           CAST(ast_t*, tree->childs->bottom->data)->name->buffer,
                           CAST(ast_t*, tree->childs->bottom->data)->data);
-        }
+        }*/
 
         while(parser->token->type == TOKEN_TYPE_COMMA) {
             parser_poll(parser, TOKEN_TYPE_COMMA);
-            list_push(tree->childs, parser_parse_expr(parser));
-            LOG_PUSH_ARGS("found args (name = %s, type = %s)",
-                          CAST(ast_t*, tree->childs->bottom->data)->name->buffer,
-                          CAST(ast_t*, tree->childs->bottom->data)->data_type->name->buffer);    }
+            list_push(tree->childs, parser_parse_arth(parser, parent));
+            //LOG_PUSH_ARGS("found args (name = %s, type = %s)",
+            //              CAST(ast_t*, tree->childs->bottom->data)->name->buffer,
+            //              CAST(ast_t*, tree->childs->bottom->data)->data_type->name->buffer);
+        }
     }
 
     parser_poll(parser, TOKEN_TYPE_RPAREN);
 
+    return tree;
+}
+
+ast_t* parser_parse_list(parser_t* parser, ast_t* parent) {
+
+    ast_t* tree = init_ast(AST_TYPE_LIST);
+    tree->token = parser->token;
+    tree->parent = parent;
+    parser_poll(parser, TOKEN_TYPE_LBRAKET);
+
+    if (parser->token->type != TOKEN_TYPE_RBRAKET) {
+
+        list_push(tree->childs, parser_parse_expr(parser, tree));
+
+        while(parser->token->type == TOKEN_TYPE_COMMA) {
+            parser_poll(parser, TOKEN_TYPE_COMMA);
+            list_push(tree->childs, parser_parse_expr(parser, tree));
+        }
+
+    }
+
+
+    parser_poll(parser, TOKEN_TYPE_RBRAKET);
     return tree;
 }
 
@@ -100,12 +131,14 @@ ast_t* parser_parse_template(parser_t* parser) {
     parser_poll(parser, TOKEN_TYPE_LT);
 
     ast_t* tree = init_ast(AST_TYPE_TEMPLATE);
+    tree->token = parser->token;
 
-    list_push(tree->childs, parser_parse_expr(parser));
+
+    list_push(tree->childs, parser_parse_expr(parser, tree));
 
     while(parser->token->type == TOKEN_TYPE_COMMA) {
         parser_poll(parser, TOKEN_TYPE_COMMA);
-        list_push(tree->childs, parser_parse_expr(parser));
+        list_push(tree->childs, parser_parse_expr(parser, tree));
     }
 
 
@@ -116,6 +149,7 @@ ast_t* parser_parse_template(parser_t* parser) {
 
 ast_t* parser_parse_integer(parser_t* parser) {
     ast_t* tree = init_ast(AST_TYPE_INTEGER);
+    tree->token = parser->token;
     tree->data = heap_int(atoi(parser->token->value->buffer));
     parser_poll(parser, TOKEN_TYPE_INTEGER_LITERAL);
     return tree;
@@ -123,6 +157,7 @@ ast_t* parser_parse_integer(parser_t* parser) {
 
 ast_t* parser_parse_double(parser_t* parser) {
     ast_t* tree = init_ast(AST_TYPE_DOUBLE);
+    tree->token = parser->token;
     tree->data = heap_double(atof(parser->token->value->buffer));
     parser_poll(parser, TOKEN_TYPE_DOUBLE_LITERAL);
     return tree;
@@ -132,52 +167,73 @@ ast_t* parser_parse_string(parser_t* parser) {
     ast_t* tree = init_ast(AST_TYPE_STRING);
     tree->name = init_string("string");
     tree->data = parser->token->value;
+    tree->token = parser->token;
     parser_poll(parser, TOKEN_TYPE_STRING_LITERAL);
     return tree;
 }
 
-ast_t* parser_parse_id(parser_t* parser) {
+ast_t* parser_parse_call(parser_t* parser) {
+    /*ast_t* tree = init_ast(AST_TYPE_CALL);
+    tree->name = parser->token->value;
+    tree->value = parser_parse_arglist(parser);
+    tree->token = parser->token;
+    parser_poll(parser, TOKEN_TYPE_STRING_LITERAL);
+    return tree;*/
+}
+
+ast_t* parser_parse_id(parser_t* parser, ast_t* parent) {
     if (parser->token->type == TOKEN_TYPE_IDENTIFIER) {
 
         string_t* id = parser->token->value;
+        lexer_token_t* token = parser->token;
         parser_poll(parser, TOKEN_TYPE_IDENTIFIER);
 
-        if (string_cmp_str(id, "return") == STRING_COMPARE_RESULT_OK) {
+        if (string_cmp_str(id, "return")) {
             ast_t* tree = init_ast(AST_TYPE_RETURN);
+            tree->token = parser->token;
             tree->name = id;
 
-            tree->value = parser_parse_arth(parser);
+            tree->value = parser_parse_arth(parser, parent);
 
-            parser_poll(parser, TOKEN_TYPE_SEMI);
+            if (parser->token->type == TOKEN_TYPE_SEMI)
+                parser_poll(parser, TOKEN_TYPE_SEMI);
 
             return tree;
-        }
-
-
-        if (token_is_operator(parser->token->type)) {
-
-            if (parser->token->type == TOKEN_TYPE_EQUALS) {
-                ast_t* tree = init_ast(AST_TYPE_ASSIGNMENT);
-                ast_t* lhs = init_ast(AST_TYPE_ACCESS);
-                lhs->name = id;
-                list_push(tree->childs, lhs);
-                list_push(tree->childs, parser_parse_arth(parser));
-                return tree;
-            }
-
+        } else if(string_cmp_str(id, "const")) {
+            ast_t* tree = init_ast(AST_TYPE_CONSTANT);
+            tree->token = parser->token;
+            ast_t* var = parser_parse_expr(parser, tree);
+            tree->name = var->name;
+            tree->data_type = var->data_type;
+            tree->parent = parent;
+            tree->value = var->value;
+            free(var);
+            return tree;
+        } else if (token_is_operator(parser->token->type) && parser->token->type == TOKEN_TYPE_EQUALS) {
+            ast_t* tree = init_ast(AST_TYPE_ASSIGNMENT);
+            tree->parent = parent;
+            tree->token = parser->token;
+            ast_t* lhs = init_ast(AST_TYPE_ACCESS);
+            lhs->name = id;
+            lhs->token = token;
+            list_push(tree->childs, lhs);
+            list_push(tree->childs, parser_parse_arth(parser, tree));
+            return tree;
         } else if (parser->token->type == TOKEN_TYPE_IDENTIFIER) {
             LOG_PUSH_ARGS("possible decleration ! (type: %s, name: %s)", id->buffer, parser->token->value->buffer);
 
             ast_t* tree = init_ast(AST_TYPE_VARIABLE);
             tree->name = parser->token->value;
             tree->data_type = init_complex_data_type(id);
+            tree->token = parser->token;
+            tree->parent = parent;
 
             parser_poll(parser, TOKEN_TYPE_IDENTIFIER);
 
             switch (parser->token->type) {
             case TOKEN_TYPE_EQUALS:
                 parser_poll(parser, TOKEN_TYPE_EQUALS);
-                tree->value = parser_parse_arth(parser);
+                tree->value = parser_parse_arth(parser, tree);
                 parser_poll(parser, TOKEN_TYPE_SEMI);
                 break;
             case TOKEN_TYPE_SEMI:
@@ -191,8 +247,23 @@ ast_t* parser_parse_id(parser_t* parser) {
                 free(tree->childs);
                 tree->type = AST_TYPE_FUNCTION;
 
+                bool is_asm = false;
 
-                ast_t* args = parser_parse_arglist(parser);
+                if (parser->last_expr->type == AST_TYPE_LIST) {
+                    LIST_FOREACH(parser->last_expr->childs, {
+                        ast_t* item = node->data;
+                        if (item->type == AST_TYPE_STRING) {
+                            printf("Checking %s..", CAST(string_t*, item->data)->buffer);
+                            if (string_cmp_str(item->data, "__asm__")) {
+                                tree->type = AST_TYPE_ASM_FUNCTION;
+                                is_asm = true;
+                            }
+                        }
+                    })
+                }
+
+
+                ast_t* args = parser_parse_arglist(parser, tree);
                 tree->childs = args->childs;
                 args->childs = NULL;
                 free(args);
@@ -204,7 +275,26 @@ ast_t* parser_parse_id(parser_t* parser) {
 
                 switch (parser->token->type) {
                 case TOKEN_TYPE_LBRACE:
-                    tree->value = parser_parse_expr(parser);
+                    if (is_asm) {
+                        parser_poll(parser, TOKEN_TYPE_LBRACE);
+
+                        ast_t* body = init_ast(AST_TYPE_COMPOUND);
+                        body->parent = tree;
+
+                        while(parser->token->type != TOKEN_TYPE_RBRACE) {
+                            if (parser->token->type == TOKEN_TYPE_STRING_LITERAL) {
+                                list_push(body->childs, parser_parse_string(parser));
+                            } else {
+                                parser_report_and_exit(parser, PARSER_ERROR_ASM_FUNCTION_INVALID_BODY, tree->name->buffer);
+                            }
+                        }
+
+                        parser_poll(parser, TOKEN_TYPE_RBRACE);
+
+                        tree->value = body;
+                    } else {
+                        tree->value = parser_parse_expr(parser, tree);
+                    }
                     break;
                 case TOKEN_TYPE_SEMI:
                     parser_poll(parser, TOKEN_TYPE_SEMI);
@@ -224,8 +314,14 @@ ast_t* parser_parse_id(parser_t* parser) {
         } else if (parser->token->type == TOKEN_TYPE_LPAREN) {
             ast_t* tree = init_ast(AST_TYPE_CALL);
             tree->name = id;
-            tree->value = parser_parse_arglist(parser);
+            tree->token = parser->token;
+            tree->value = parser_parse_arglist(parser, tree);
             parser_poll(parser, TOKEN_TYPE_SEMI);
+            return tree;
+        } else {
+            ast_t* tree = init_ast(AST_TYPE_ACCESS);
+            tree->token = parser->token;
+            tree->name = id;
             return tree;
         }
 
@@ -233,35 +329,38 @@ ast_t* parser_parse_id(parser_t* parser) {
     return NULL;
 }
 
-ast_t* parser_parse_expr(parser_t* parser) {
+ast_t* parser_parse_expr(parser_t* parser, ast_t* parent) {
 
     LOG_PUSH_ARGS("Token (type: %s, value: %s)", token_type_str(parser->token->type), parser->token->value->buffer);
 
+    ast_t* tree = NULL;
 
     switch(parser->token->type) {
-    case TOKEN_TYPE_IDENTIFIER: return parser_parse_id(parser);
-    case TOKEN_TYPE_EQUALS: return parser_parse_arth(parser);
-    case TOKEN_TYPE_LBRACE: return parser_parse_block(parser);
-    case TOKEN_TYPE_INTEGER_LITERAL: return parser_parse_integer(parser);
-    case TOKEN_TYPE_DOUBLE_LITERAL: return parser_parse_double(parser);
-    case TOKEN_TYPE_STRING_LITERAL: return parser_parse_string(parser);
+    case TOKEN_TYPE_IDENTIFIER: tree = parser_parse_id(parser, parent); break;
+    case TOKEN_TYPE_EQUALS: tree = parser_parse_arth(parser, parent); break;
+    case TOKEN_TYPE_LBRACE: tree = parser_parse_block(parser); break;
+    case TOKEN_TYPE_LBRAKET: tree = parser_parse_list(parser, parent); break;
+    case TOKEN_TYPE_INTEGER_LITERAL: tree = parser_parse_integer(parser); break;
+    case TOKEN_TYPE_DOUBLE_LITERAL: tree = parser_parse_double(parser); break;
+    case TOKEN_TYPE_STRING_LITERAL: tree = parser_parse_string(parser); break;
     default:
     {
-        ast_t* tree = init_ast(AST_TYPE_STATEMENT);
+        tree = init_ast(AST_TYPE_STATEMENT);
         tree->name = parser->token->value;
         parser_poll(parser, parser->token->type);
-        return tree;
     }
     }
-
+    tree->parent = parent;
+    parser->last_expr = tree;
+    return tree;
 }
 
-ast_t* parser_parse_arth(parser_t* parser) {
+ast_t* parser_parse_arth(parser_t* parser, ast_t* parent) {
 
     ast_t* tree = NULL;
 
 
-    switch (parser->token->type) {
+    /*switch (parser->token->type) {
     case TOKEN_TYPE_INTEGER_LITERAL:
         tree = parser_parse_integer(parser);
         break;
@@ -269,20 +368,37 @@ ast_t* parser_parse_arth(parser_t* parser) {
         tree = parser_parse_double(parser);
         break;
     case TOKEN_TYPE_IDENTIFIER:
-        tree = init_ast(AST_TYPE_ACCESS);
-        tree->name = parser->token->value;
+    {
+        string_t* id = parser->token->value;
+        lexer_token_t* token = parser->token;
         parser_poll(parser, TOKEN_TYPE_IDENTIFIER);
+        if (parser->token->type == TOKEN_TYPE_LPAREN) {
+            tree = init_ast(AST_TYPE_CALL);
+            tree->name = id;
+            tree->token = token;
+            tree->value = parser_parse_arglist(parser);
+        } else {
+            tree = init_ast(AST_TYPE_ACCESS);
+            tree->token = token;
+            tree->name = id;
+        }
         break;
+    }
     default:
         parser_report_and_exit(parser, PARSER_ERROR_UNHANDLED_EXPER, NULL);
-    }
+    }*/
+
+    const char* debug = parser->token->value->buffer;
+
+    tree = parser_parse_expr(parser, parent);
 
     if (token_is_operator(parser->token->type)) {
         ast_t* tmp = init_ast(AST_TYPE_OPERATION);
+        tmp->token = parser->token;
         tmp->name = parser->token->value;
         list_push(tmp->childs, tree);
         parser_poll(parser, parser->token->type);
-        list_push(tmp->childs, parser_parse_arth(parser));
+        list_push(tmp->childs, parser_parse_arth(parser, parent));
         tree = tmp;
     }
 
@@ -292,12 +408,14 @@ ast_t* parser_parse_arth(parser_t* parser) {
 ast_t* parser_parse_assign(parser_t* parser) {
 
     ast_t* tree = init_ast(AST_TYPE_VARIABLE);
+    tree->token = parser->token;
     parser_poll(parser, parser->token->type);
 
     tree->name = parser->token->value;
 
     if (parser->token->type == TOKEN_TYPE_OPERATOR) {
         ast_t* var = init_ast(AST_TYPE_VARIABLE);
+        var->token = parser->token;
         var->name = tree->name;
         tree->name = parser->token->value;
         tree->type = AST_TYPE_OPERATION;
@@ -313,83 +431,24 @@ ast_t* parser_parse_assign(parser_t* parser) {
 
 ast_t* parser_parse_return(parser_t* parser) {
     ast_t* tree = init_ast(AST_TYPE_RETURN);
+    tree->token = parser->token;
     parser_poll(parser, TOKEN_TYPE_IDENTIFIER);
 
     tree->name = init_string("return");
-    tree->value = parser_parse_expr(parser);
+    tree->value = parser_parse_expr(parser, tree);
 
     parser_poll(parser, TOKEN_TYPE_SEMI);
     return tree;
 }
-/*
-ast_t* parser_parse_id(parser_t* parser) {
 
-    if (string_cmp_str(parser->token->value, "return") == STRING_COMPARE_RESULT_OK) {
-        return parser_parse_return(parser);
-    }
-
-    ast_t* tree = init_ast(AST_TYPE_VARIABLE);
-    string_t* value = parser->token->value;
-
-    parser_poll(parser, TOKEN_TYPE_IDENTIFIER);
-
-    printf("poll `%s'\n", parser->token->value->buffer);
-
-    if (parser->token->type == TOKEN_TYPE_IDENTIFIER) {
-        LOG_PUSH("Found possible decleration !");
-
-        tree->data_type = init_complex_data_type(value);
-        tree->name = parser->token->value;
-        parser_poll(parser, TOKEN_TYPE_IDENTIFIER);
-
-
-        switch(parser->token->type)
-        {
-        case TOKEN_TYPE_EQUALS:
-        {
-            LOG_PUSH("Found variable decl with assigment !");
-            tree->value = parser_parse_expr(parser);
-            return tree;
-            break;
-        }
-        case TOKEN_TYPE_COMMA:
-        case TOKEN_TYPE_SEMI:
-            LOG_PUSH("Found variable decl !");
-            return tree;
-            break;
-        case TOKEN_TYPE_LPAREN:
-            LOG_PUSH("Found function decl !");
-            tree->type = AST_TYPE_FUNCTION;
-            tree->value = parser_parse_arglist(parser);
-            return tree;
-            break;
-        default:
-        {
-            ast_t* val = init_ast(AST_TYPE_STATEMENT);
-            val->name = parser->token->value;
-            parser_poll(parser, parser->token->type);
-            tree->value = val;
-        }
-        }
-
-    } else if (parser->token->type == TOKEN_TYPE_LT) {
-        tree->data_type->template = parser_parse_template(parser);
-        parser_poll(parser, TOKEN_TYPE_IDENTIFIER);
-    } else if (token_is_operator(parser->token->type)) {
-
-    }
-
-    return tree;
-}
-*/
 ast_t* parser_parse_block(parser_t* parser) {
     parser_poll(parser, TOKEN_TYPE_LBRACE);
 
     ast_t* tree = init_ast(AST_TYPE_COMPOUND);
-
+    tree->token = parser->token;
 
     while(parser->token->type != TOKEN_TYPE_RBRACE)
-        list_push(tree->childs, parser_parse_expr(parser));
+        list_push(tree->childs, parser_parse_expr(parser, tree));
 
 
     parser_poll(parser, TOKEN_TYPE_RBRACE);

@@ -1,6 +1,7 @@
 #ifndef LIST_H
 #define LIST_H
 #include <stdlib.h>
+#include <include/types.h>
 
 typedef struct list_node
 {
@@ -26,7 +27,8 @@ typedef struct list
 
 list_t* init_list();
 void list_push(list_t* list, void* data);
-void list_free(list_t** list);
+void list_free(list_t** list, bool free_data);
 void* list_index_data(list_t* list, size_t index);
+void list_append_list(list_t* list, list_t* list2);
 
 #endif // LIST_H

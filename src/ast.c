@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include <include/types.h>
 
+static int __ast_unique_id_counter = 0;
+
 typedef struct key_val {
     const char* k;
     int v;
@@ -16,7 +18,7 @@ int type_sizes_len = 1;
 int find_type_size(string_t* name) {
     for(int i = 0; i < type_sizes_len; ++i) {
         key_val_t* pair = &type_sizes[i];
-        if (string_cmp_str(name, pair->k) == STRING_COMPARE_RESULT_OK) {
+        if (string_cmp_str(name, pair->k)) {
             return pair->v;
         }
     }
@@ -24,11 +26,15 @@ int find_type_size(string_t* name) {
 }
 
 
-static const char* ast_type_str(int type){
+const char* ast_type_str(int type){
     switch (type) {
     case AST_TYPE_COMPOUND: return "AST_TYPE_COMPOUND";
+    case AST_TYPE_LIST: return "AST_TYPE_LIST";
     case AST_TYPE_FUNCTION: return "AST_TYPE_FUNCTION";
+    case AST_TYPE_ASM_FUNCTION: return "AST_TYPE_ASM_FUNCTION";
     case AST_TYPE_VARIABLE: return "AST_TYPE_VARIABLE";
+    case AST_TYPE_CONSTANT: return "AST_TYPE_CONSTANT";
+    case AST_TYPE_ACCESS: return "AST_TYPE_ACCESS";
     case AST_TYPE_TEMPLATE: return "AST_TYPE_TEMPLATE";
     case AST_TYPE_RETURN: return "AST_TYPE_RETURN";
     case AST_TYPE_ASSIGNMENT: return "AST_TYPE_ASSIGNMENT";
@@ -39,7 +45,7 @@ static const char* ast_type_str(int type){
     case AST_TYPE_STRING: return "AST_TYPE_STRING";
     case AST_TYPE_CALL: return "AST_TYPE_CALL";
     }
-    return "Invalid";
+    return string_format("Invalid (%d)", type)->buffer;
 }
 
 
@@ -53,11 +59,14 @@ complex_data_type_t* init_complex_data_type(string_t* name) {
 
 ast_t* init_ast(int type) {
     ast_t* ast = calloc(1, sizeof(struct ast));
+    ast->unique_id = __ast_unique_id_counter;
+    ++__ast_unique_id_counter;
     ast->type = type;
     ast->childs = init_list();
     ast->data_type = NULL;
     ast->name = NULL;
     ast->value = NULL;
+    ast->parent = NULL;
     return ast;
 }
 

@@ -22,12 +22,13 @@ void list_push(list_t* list, void* data) {
     list->size++;
 }
 
-void list_free(list_t** list) {
+void list_free(list_t** list, bool free_data) {
     list_node_t* node = (*list)->top;
     while(node) {
         list_node_t* tmp = node;
         node = node->next;
-        free(tmp->data);
+        if (free_data)
+            free(tmp->data);
         free(tmp);
     }
     free(*list);
@@ -44,3 +45,10 @@ void* list_index_data(list_t* list, size_t index) {
     return NULL;
 }
 
+void list_append_list(list_t* list, list_t* list2) {
+    if (list == NULL || list2 == NULL)
+        return;
+    LIST_FOREACH(list2, {
+        list_push(list, node->data);
+    })
+}

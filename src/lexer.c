@@ -4,6 +4,9 @@
 #include <ctype.h>
 #include <include/lang_lexer_config.h>
 #include <include/types.h>
+#include <include/log.h>
+
+LOG_TAG("Lexer");
 
 static const char whitespace_char = ' ';
 static const char stringquote_char = '\"';
@@ -19,6 +22,8 @@ const char* token_type_str(int type) {
     case TOKEN_TYPE_RPAREN: return "TOKEN_TYPE_RPAREN";
     case TOKEN_TYPE_LBRACE: return "TOKEN_TYPE_LBRACE";
     case TOKEN_TYPE_RBRACE: return "TOKEN_TYPE_RBRACE";
+    case TOKEN_TYPE_LBRAKET: return "TOKEN_TYPE_LBRAKET";
+    case TOKEN_TYPE_RBRAKET: return "TOKEN_TYPE_RBRAKET";
     case TOKEN_TYPE_COMMA: return "TOKEN_TYPE_COMMA";
     case TOKEN_TYPE_SEMI: return "TOKEN_TYPE_SEMI";
 
@@ -114,12 +119,13 @@ lexer_t* init_lexer(const char* filename, string_t* src) {
     return this;
 }
 
-lexer_token_t* init_lexer_token(string_t* value, int type, size_t col, size_t row) {
+lexer_token_t* init_lexer_token(string_t* value, int type, size_t col, size_t row, string_t* filename) {
     lexer_token_t* token = calloc(1, sizeof(struct lexer_token));
     token->value = value;
     token->type = type;
     token->col = col;
     token->row = row;
+    token->filename = filename;
     return token;
 }
 
@@ -149,15 +155,16 @@ void lexer_offset(lexer_t* lexer, size_t offset) {
 }
 
 lexer_token_t* lexer_get_id(lexer_t* lexer) {
+    size_t col = lexer->col;
     int i = lexer->pos;
-    while (isalnum(lexer->ch)) {
+    while (isalnum(lexer->ch) || lexer->ch == '_') {
         lexer_offset(lexer, 1);
     }
-    return init_lexer_token(string_substr(lexer->src, i, lexer->pos - i), TOKEN_TYPE_IDENTIFIER, lexer->col, lexer->row);
+    return init_lexer_token(string_substr(lexer->src, i, lexer->pos - i), TOKEN_TYPE_IDENTIFIER, col, lexer->row, lexer->filename);
 }
 
 lexer_token_t* lexer_get_operator(lexer_t* lexer) {
-    lexer_token_t* token = init_lexer_token(NULL, TOKEN_TYPE_OPERATOR, lexer->col, lexer->row);
+    lexer_token_t* token = init_lexer_token(NULL, TOKEN_TYPE_OPERATOR, lexer->col, lexer->row, lexer->filename);
 
     switch (lexer->ch) {
     case '=': token->type = TOKEN_TYPE_EQUALS; break;
@@ -188,7 +195,7 @@ lexer_token_t* lexer_get_operator(lexer_t* lexer) {
 }
 
 lexer_token_t* lexer_get_char(lexer_t* lexer, int type) {
-    lexer_token_t* token = init_lexer_token(NULL, type, lexer->col, lexer->row);
+    lexer_token_t* token = init_lexer_token(NULL, type, lexer->col, lexer->row, lexer->filename);
     char str[2] = { lexer->ch, '\0' };
     token->value = init_string(str);
     lexer_offset(lexer, 1);
@@ -196,6 +203,7 @@ lexer_token_t* lexer_get_char(lexer_t* lexer, int type) {
 }
 
 lexer_token_t* lexer_get_number(lexer_t* lexer) {
+    size_t col = lexer->col;
     char* buffer = calloc(256, sizeof(string_char_type));
     size_t pos = 0;
     bool is_double = false;
@@ -208,21 +216,22 @@ lexer_token_t* lexer_get_number(lexer_t* lexer) {
             is_double = true;
     }
     buffer[pos] = '\0';
-    lexer_token_t* token = init_lexer_token(NULL, is_double ? TOKEN_TYPE_DOUBLE_LITERAL : TOKEN_TYPE_INTEGER_LITERAL, lexer->col, lexer->row);
+    lexer_token_t* token = init_lexer_token(NULL, is_double ? TOKEN_TYPE_DOUBLE_LITERAL : TOKEN_TYPE_INTEGER_LITERAL, col, lexer->row, lexer->filename);
     token->value = init_string(buffer);
     free(buffer);
     return token;
 }
 
 lexer_token_t* lexer_get_string(lexer_t* lexer) {
+    size_t col = lexer->col;
     lexer_offset(lexer, 1);
     size_t start = lexer->pos;
     while(lexer->ch != '\"') {
         lexer_offset(lexer, 1);
     }
-    string_t* str = string_substr(lexer->src, start, (lexer->pos - start) - 1);
+    string_t* str = string_substr(lexer->src, start, (lexer->pos - start));
     lexer_offset(lexer, 1);
-    return init_lexer_token(str, TOKEN_TYPE_STRING_LITERAL, lexer->col, lexer->row);
+    return init_lexer_token(str, TOKEN_TYPE_STRING_LITERAL, col, lexer->row, lexer->filename);
 }
 
 lexer_token_t* lexer_get_token(lexer_t* lexer) {
@@ -236,7 +245,7 @@ lexer_token_t* lexer_get_token(lexer_t* lexer) {
             continue;
         }
 
-        if (isalpha(lexer->ch))
+        if (isalpha(lexer->ch) || lexer->ch == '_')
             return lexer_get_id(lexer);
 
         if (is_operator(lexer->ch))
@@ -251,6 +260,8 @@ lexer_token_t* lexer_get_token(lexer_t* lexer) {
         case ')': return lexer_get_char(lexer, TOKEN_TYPE_RPAREN);
         case '{': return lexer_get_char(lexer, TOKEN_TYPE_LBRACE);
         case '}': return lexer_get_char(lexer, TOKEN_TYPE_RBRACE);
+        case '[': return lexer_get_char(lexer, TOKEN_TYPE_LBRAKET);
+        case ']': return lexer_get_char(lexer, TOKEN_TYPE_RBRAKET);
         case ';': return lexer_get_char(lexer, TOKEN_TYPE_SEMI);
         case ',': return lexer_get_char(lexer, TOKEN_TYPE_COMMA);
         case '\"': return lexer_get_string(lexer);
@@ -260,10 +271,16 @@ lexer_token_t* lexer_get_token(lexer_t* lexer) {
                 while(lexer->ch != '\n') {
                     lexer_offset(lexer, 1);
                 }
+                lexer->row++;
+                lexer->col = 0;
             } else if (cha == '*') {
                 while(lexer->ch != '\0') {
+                    if (lexer->ch == '\n') {
+                        lexer->row++;
+                        lexer->col = 0;
+                    }
                     if (lexer->ch == '*' && lexer_peek(lexer, 1) == '/') {
-                        lexer_offset(lexer, 2);
+                        lexer_offset(lexer, 1);
                         break;
                     }
                     lexer_offset(lexer, 1);
@@ -278,5 +295,5 @@ lexer_token_t* lexer_get_token(lexer_t* lexer) {
         lexer_offset(lexer, 1);
 
     }
-    return init_lexer_token(NULL, TOKEN_TYPE_EOF, lexer->col, lexer->row);
+    return init_lexer_token(NULL, TOKEN_TYPE_EOF, lexer->col, lexer->row, lexer->filename);
 }

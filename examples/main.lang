@@ -7,6 +7,11 @@ comment test
 
 */
 
+@include("include_test.lang")
+
+const int _ex_const = 10;
+const string __hello_world__ = "Hello, World !\n";
+
 
 int sum(int a, int b)
 {
@@ -20,8 +25,9 @@ int main(int argc, int argv)
     int test = 100;
     float test2 = 100.0;
     int add = 1 + 2 + test;
-    print("Hello, World !");
-    return 0 + 0;
+    print(__hello_world__, 15);
+    print("Next Line !\n", 12);
+    return test;
 }
 
 // int main();

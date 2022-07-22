@@ -12,9 +12,11 @@ typedef struct analyzer {
 
 analyzer_t* init_analyzer();
 
-void analuzer_report_and_exit(analyzer_t* analyzer);
+void analyzer_report_and_exit(analyzer_t* analyzer);
 void analyzer_analyze(analyzer_t* analyzer, ast_t* ast);
-void analyzer_check(analyzer_t* analyzer);
+void analyzer_check_redefinetion(analyzer_t* analyzer);
+void analyzer_check_calls(analyzer_t* analyzer, ast_t* ast);
+void analyzer_check_types(analyzer_t* analyzer, ast_t* ast);
 
 
 #endif // ANALYZER_H
