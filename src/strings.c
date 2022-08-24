@@ -86,7 +86,25 @@ string_t* string_concat_view(string_t* lhs, string_view_t* rhs) {
     return this;
 }
 
-size_t string_index_of(string_t* this, const string_char_type* s, size_t pos) {
+size_t string_index_of(string_t* this, string_t* value, size_t pos) {
+    for(size_t i = pos; i < this->size; ++i)
+        if (strncmp(&this->buffer[i], value->buffer, value->size) == 0)
+            return i;
+    return this->size + 1;
+}
+
+size_t string_last_index_of(string_t* this, string_t* value) {
+    size_t old = 0, ind = 0;
+    do {
+        ind = string_index_of(this, value, old + 1);
+        if (ind < this->size) {
+            old = ind;
+        }
+    } while (ind < this->size);
+    return old;
+}
+
+size_t string_index_of_str(string_t* this, const string_char_type* s, size_t pos) {
     size_t len = strlen(s);
     for(size_t i = pos; i < this->size; ++i)
         if (strncmp(&this->buffer[i], s, len) == 0)
@@ -94,10 +112,10 @@ size_t string_index_of(string_t* this, const string_char_type* s, size_t pos) {
     return this->size + 1;
 }
 
-size_t string_last_index_of(string_t* this, const string_char_type* s) {
+size_t string_last_index_of_str(string_t* this, const string_char_type* s) {
     size_t old = 0, ind = 0;
     do {
-        ind = string_index_of(this, s, old + 1);
+        ind = string_index_of_str(this, s, old + 1);
         if (ind < this->size) {
             old = ind;
         }
@@ -150,7 +168,7 @@ void string_append_chr(string_t* string, string_char_type value) {
 }
 
 void string_erase(string_t* string, size_t start, size_t end) {
-    if (start >= string->size || end >= string->size || end - start > string->size) {
+    if (start >= string->size || end > string->size || end - start > string->size) {
         return;
     }
 
@@ -193,6 +211,29 @@ void string_insert_str(string_t* string, const string_char_type* value, size_t p
     free(string->buffer);
     string->buffer = buffer;
     string->size = len;
+}
+
+string_t* string_trim(string_t* string) {
+
+    size_t st = 0;
+    while(string->buffer[st] == ' ') {
+        st++;
+    }
+
+    if (st > 0) {
+        string_erase(string, 0, st);
+    }
+
+    st = string->size - 1;
+    while(string->buffer[st] == ' ') {
+        st--;
+    }
+
+    if (st < string->size - 1) {
+        string_erase(string, st + 1, string->size);
+    }
+
+    return string;
 }
 
 string_t* string_format(const string_char_type* fmt, ...) {

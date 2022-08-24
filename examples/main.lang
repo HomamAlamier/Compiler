@@ -9,25 +9,60 @@ comment test
 
 @include("include_test.lang")
 
+@define(DEFINE_TEST)
+@define(DEFINE_TEST2, 1)
+
+
+@if(defined(DEFINE_TEST))
+const int def = 0;
+@endif
+
+@if(DEFINE_TEST2 == 1)
+const int ddd = 1;
+@endif
+
+@if(defined(NOT_DEFINED))
+const int not_ddd = 1;
+@endif
+
+
+// TODO: global variable declartion in the `bss` section
+
 const int _ex_const = 10;
 const string __hello_world__ = "Hello, World !\n";
+string[] array = ["1", "2", "3"];
 
+void printS() {
+    print(array[1], 1);
+}
 
 int sum(int a, int b)
 {
     return a + b;
 }
 
+
 // int sum(int a, int b);
 
 int main(int argc, int argv)
 {
-    int test = 100;
+    int test = 0;
+
+    // TODO: string[] new_test = new string[4];
+
+    string fst_line = "First Line !\n";
     float test2 = 100.0;
     int add = 1 + 2 + test;
+
+    string[] str_test = ["test1\n", "test2\n"];
+    // test
+    print(array[0], 1);
+    print(str_test[0], 6);
+    print(str_test[1], 6);
+    print(fst_line, 13);
     print(__hello_world__, 15);
     print("Next Line !\n", 12);
-    return test;
+    return DEFINE_TEST2;
 }
 
 // int main();

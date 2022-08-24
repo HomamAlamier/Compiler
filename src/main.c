@@ -6,6 +6,7 @@
 #include <include/assembler.h>
 #include <include/types.h>
 #include <include/preprocessor.h>
+#include <include/x86_32_codegen.h>
 #include <assert.h>
 
 string_t* int_to_hex(int x) {
@@ -23,11 +24,18 @@ int main(int argc, char *argv[])
     const char* filename = "examples/main.lang";
 
     char* src = read_file_full(filename);
+    string_t* srcStr = init_string(src);
 
-    lexer_t* lexer = init_lexer(filename, init_string(src));
+    preprocessor_t* pre = init_preprocessor(init_string(filename), srcStr);
+    preprocessor_preprocess(pre);
 
-    preprocessor_t* pre = init_preprocessor(lexer->filename, lexer->src);
-    preprocesser_preprocess(pre);
+
+    lexer_t* lexer = init_lexer(filename, srcStr, pre);
+
+
+    FILE* fpre = fopen("pre.lang", "wb");
+    fwrite(pre->src->buffer, 1, pre->src->size, fpre);
+    fclose(fpre);
 
     lexer_token_t* token = NULL;
 
@@ -53,8 +61,8 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    assembler_t* as = init_assembler(ana);
-    assembler_generate(as, root, NULL);
+    assembler_t* as = init_assembler(ana, init_x86_32_codegen());
+    assembler_generate(as, root, 0);
     assembler_generate_data(as);
 
 

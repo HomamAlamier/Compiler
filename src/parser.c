@@ -39,6 +39,20 @@ double* heap_size_t(size_t value) {
     return mem;
 }
 
+bool eval_integer_oper(ast_t* oper, int* result) {
+    LIST_FOREACH(oper->childs, {
+        ast_t* item = node->data;
+        if (item->type == AST_TYPE_OPERATION) {
+            eval_integer_oper(item, result);
+        } else if (item->type == AST_TYPE_INTEGER) {
+            *result += *CAST(int*, item->data);
+        } else {
+            return false;
+        }
+    })
+    return true;
+}
+
 void parser_poll(parser_t* parser, int type) {
     if (parser->token->type != type) {
         parser_report_and_exit(parser, PARSER_ERROR_UNEXPECTED_TOKEN, &type);
@@ -51,18 +65,38 @@ inline void parser_report_and_exit(parser_t* parser, int error, void* data) {
     switch (error) {
     case PARSER_ERROR_UNEXPECTED_TOKEN:
         LOG_PUSH_ARGS("%s:(%d:%d): Unexpected token %s [%s] (expected %s)",
-                 parser->lexer->filename->buffer, parser->lexer->row, parser->lexer->col - 1,
+                 parser->token->filename->buffer, parser->token->row, parser->token->col - 1,
                  token_type_str(parser->token->type), parser->token->value->buffer, token_type_str(*(int*)data));
         break;
     case PARSER_ERROR_UNHANDLED_EXPER:
         LOG_PUSH_ARGS("%s:(%d:%d): Unhandled experssion %s (value = `%s`)",
-                 parser->lexer->filename->buffer, parser->lexer->row, parser->lexer->col - 1,
+                 parser->token->filename->buffer, parser->token->row, parser->token->col - 1,
                  token_type_str(parser->token->type), parser->token->value->buffer);
         break;
     case PARSER_ERROR_ASM_FUNCTION_INVALID_BODY:
         LOG_PUSH_ARGS("%s:(%d:%d): in asm function `%s`: body should only contains strings (unexpected `%s`)",
-                 parser->lexer->filename->buffer, parser->lexer->row, parser->lexer->col - 1,
+                 parser->token->filename->buffer, parser->token->row, parser->token->col - 1,
                  data, token_type_str(parser->token->type));
+        break;
+    case PARSER_ERROR_INDEX_OPERATION_RESULT_NOT_INT:
+        LOG_PUSH_ARGS("%s:(%d:%d): Error: cannot index array `%s` with an opertaion that does not result in an integer value",
+                 parser->token->filename->buffer, parser->token->row, parser->token->col - 1,
+                 data);
+        break;
+    case PARSER_ERROR_DECL_OPERATION_RESULT_NOT_INT:
+        LOG_PUSH_ARGS("%s:(%d:%d): Error: cannot declare array `%s` size with an opertaion that does not result in an integer value",
+                 parser->token->filename->buffer, parser->token->row, parser->token->col - 1,
+                 data);
+        break;
+    case PARSER_ERROR_INDEX_OPERATION_RESULT_NEG_INT:
+        LOG_PUSH_ARGS("%s:(%d:%d): Error: cannot index array `%s` with a negative integer value",
+                 parser->token->filename->buffer, parser->token->row, parser->token->col - 1,
+                 data);
+        break;
+    case PARSER_ERROR_DECL_OPERATION_RESULT_NEG_INT:
+        LOG_PUSH_ARGS("%s:(%d:%d): Error: cannot declare array `%s` size with a negative integer value",
+                 parser->token->filename->buffer, parser->token->row, parser->token->col - 1,
+                 data);
         break;
     }
     exit(1);
@@ -219,23 +253,65 @@ ast_t* parser_parse_id(parser_t* parser, ast_t* parent) {
             list_push(tree->childs, lhs);
             list_push(tree->childs, parser_parse_arth(parser, tree));
             return tree;
-        } else if (parser->token->type == TOKEN_TYPE_IDENTIFIER) {
-            LOG_PUSH_ARGS("possible decleration ! (type: %s, name: %s)", id->buffer, parser->token->value->buffer);
-
-            ast_t* tree = init_ast(AST_TYPE_VARIABLE);
-            tree->name = parser->token->value;
-            tree->data_type = init_complex_data_type(id);
+        } else if (parser->token->type == TOKEN_TYPE_LPAREN) {
+            ast_t* tree = init_ast(AST_TYPE_CALL);
+            tree->name = id;
             tree->token = parser->token;
+            tree->value = parser_parse_arglist(parser, tree);
+            parser_poll(parser, TOKEN_TYPE_SEMI);
+            return tree;
+        } else {
+            LOG_PUSH_ARGS("possible decleration ! (type: %s, name: %s)", id->buffer, parser->token->value->buffer);
+            bool is_array = parser->token->type == TOKEN_TYPE_LBRAKET;
+            ast_t* tree = init_ast(is_array ? AST_TYPE_VARIABLE_ARRAY : AST_TYPE_VARIABLE);
             tree->parent = parent;
+            if (parser->token->type == TOKEN_TYPE_LBRAKET) {
+                parser_poll(parser, TOKEN_TYPE_LBRAKET);
 
-            parser_poll(parser, TOKEN_TYPE_IDENTIFIER);
+                if (parser->token->type != TOKEN_TYPE_RBRAKET) {
+                    tree->index = parser_parse_expr(parser, tree);
+                    int sz = 0;
+                }
+
+                parser_poll(parser, TOKEN_TYPE_RBRAKET);
+            }
+            bool is_decl = parser->token->type == TOKEN_TYPE_IDENTIFIER;
+            if (is_decl) {
+                tree->name = parser->token->value;
+                tree->data_type = init_complex_data_type(id, is_array, 0);
+                tree->token = parser->token;
+                parser_poll(parser, TOKEN_TYPE_IDENTIFIER);
+            } else {
+                tree->name = id;
+                tree->token = token;
+                tree->type = is_array ?  AST_TYPE_ACCESS_ARRAY : AST_TYPE_ACCESS;
+            }
+
+            if (is_array) {
+                int sz = 0;
+                if (tree->index && tree->index->type  == AST_TYPE_OPERATION) {
+                    if (!eval_integer_oper(tree->index, &sz)) {
+                        parser_report_and_exit(parser, is_decl ? PARSER_ERROR_DECL_OPERATION_RESULT_NOT_INT : PARSER_ERROR_INDEX_OPERATION_RESULT_NOT_INT, id);
+                    } else if (sz < 0) {
+                        parser_report_and_exit(parser, is_decl ? PARSER_ERROR_DECL_OPERATION_RESULT_NEG_INT : PARSER_ERROR_INDEX_OPERATION_RESULT_NEG_INT, id);
+                    } else {
+                        tree->index->data = heap_int(sz);
+                    }
+                }
+            }
+
+
+            //const char* debug = tree->name->buffer;
+            //const char* debug2 = tree->data_type ? tree->data_type->name->buffer : NULL;
 
             switch (parser->token->type) {
             case TOKEN_TYPE_EQUALS:
+            {
                 parser_poll(parser, TOKEN_TYPE_EQUALS);
                 tree->value = parser_parse_arth(parser, tree);
                 parser_poll(parser, TOKEN_TYPE_SEMI);
                 break;
+            }
             case TOKEN_TYPE_SEMI:
             case TOKEN_TYPE_COMMA:
             case TOKEN_TYPE_RPAREN:
@@ -306,22 +382,8 @@ ast_t* parser_parse_id(parser_t* parser, ast_t* parent) {
 
                 break;
             }
-            default:
-                parser_report_and_exit(parser, PARSER_ERROR_UNHANDLED_EXPER, NULL);
             }
 
-            return tree;
-        } else if (parser->token->type == TOKEN_TYPE_LPAREN) {
-            ast_t* tree = init_ast(AST_TYPE_CALL);
-            tree->name = id;
-            tree->token = parser->token;
-            tree->value = parser_parse_arglist(parser, tree);
-            parser_poll(parser, TOKEN_TYPE_SEMI);
-            return tree;
-        } else {
-            ast_t* tree = init_ast(AST_TYPE_ACCESS);
-            tree->token = parser->token;
-            tree->name = id;
             return tree;
         }
 

@@ -10,7 +10,7 @@ const char* __path_sep__ =
 
 
 string_t* path_get_dir(string_t* filename) {
-    size_t ind = string_last_index_of(filename, __path_sep__);
+    size_t ind = string_last_index_of_str(filename, __path_sep__);
     return string_substr(filename, 0, ind);
 }
 

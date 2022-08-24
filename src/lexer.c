@@ -5,6 +5,7 @@
 #include <include/lang_lexer_config.h>
 #include <include/types.h>
 #include <include/log.h>
+#include <include/preprocessor.h>
 
 LOG_TAG("Lexer");
 
@@ -108,7 +109,27 @@ bool is_number_literal(const char* str) {
     return true;
 }
 
-lexer_t* init_lexer(const char* filename, string_t* src) {
+void get_relevent_row(lexer_t* lexer, lexer_token_t* token)
+{
+    size_t allIncSize = 0;
+    LIST_FOREACH(lexer->preprocessor->included_files, {
+        include_file_t* inc = node->data;
+        if (lexer->row < inc->begin) {
+            token->row = lexer->row;
+            token->filename = lexer->filename;
+        }
+        if (lexer->row >= inc->begin && lexer->row <= inc->end) {
+            token->row = lexer->row - inc->begin;
+            token->filename = inc->filename;
+            return;
+        }
+        allIncSize += inc->end - inc->begin;
+    })
+    token->row = lexer->row - allIncSize;
+    token->filename = lexer->filename;
+}
+
+lexer_t* init_lexer(const char* filename, string_t* src, preprocessor_t* preprocessor) {
     lexer_t* this = calloc(1, sizeof(struct lexer));
     this->filename = init_string(filename);
     this->src = src;
@@ -116,16 +137,16 @@ lexer_t* init_lexer(const char* filename, string_t* src) {
     this->ch = *src->buffer;
     this->col = 1;
     this->row = 1;
+    this->preprocessor = preprocessor;
     return this;
 }
 
-lexer_token_t* init_lexer_token(string_t* value, int type, size_t col, size_t row, string_t* filename) {
+lexer_token_t* init_lexer_token(string_t* value, int type, size_t col, lexer_t* lexer) {
     lexer_token_t* token = calloc(1, sizeof(struct lexer_token));
     token->value = value;
     token->type = type;
     token->col = col;
-    token->row = row;
-    token->filename = filename;
+    get_relevent_row(lexer, token);
     return token;
 }
 
@@ -160,11 +181,12 @@ lexer_token_t* lexer_get_id(lexer_t* lexer) {
     while (isalnum(lexer->ch) || lexer->ch == '_') {
         lexer_offset(lexer, 1);
     }
-    return init_lexer_token(string_substr(lexer->src, i, lexer->pos - i), TOKEN_TYPE_IDENTIFIER, col, lexer->row, lexer->filename);
+    return init_lexer_token(string_substr(lexer->src, i,
+                                lexer->pos - i), TOKEN_TYPE_IDENTIFIER, col, lexer);
 }
 
 lexer_token_t* lexer_get_operator(lexer_t* lexer) {
-    lexer_token_t* token = init_lexer_token(NULL, TOKEN_TYPE_OPERATOR, lexer->col, lexer->row, lexer->filename);
+    lexer_token_t* token = init_lexer_token(NULL, TOKEN_TYPE_OPERATOR, lexer->col, lexer);
 
     switch (lexer->ch) {
     case '=': token->type = TOKEN_TYPE_EQUALS; break;
@@ -195,7 +217,7 @@ lexer_token_t* lexer_get_operator(lexer_t* lexer) {
 }
 
 lexer_token_t* lexer_get_char(lexer_t* lexer, int type) {
-    lexer_token_t* token = init_lexer_token(NULL, type, lexer->col, lexer->row, lexer->filename);
+    lexer_token_t* token = init_lexer_token(NULL, type, lexer->col, lexer);
     char str[2] = { lexer->ch, '\0' };
     token->value = init_string(str);
     lexer_offset(lexer, 1);
@@ -216,7 +238,8 @@ lexer_token_t* lexer_get_number(lexer_t* lexer) {
             is_double = true;
     }
     buffer[pos] = '\0';
-    lexer_token_t* token = init_lexer_token(NULL, is_double ? TOKEN_TYPE_DOUBLE_LITERAL : TOKEN_TYPE_INTEGER_LITERAL, col, lexer->row, lexer->filename);
+    lexer_token_t* token = init_lexer_token(NULL,
+            is_double ? TOKEN_TYPE_DOUBLE_LITERAL : TOKEN_TYPE_INTEGER_LITERAL, col, lexer);
     token->value = init_string(buffer);
     free(buffer);
     return token;
@@ -231,7 +254,7 @@ lexer_token_t* lexer_get_string(lexer_t* lexer) {
     }
     string_t* str = string_substr(lexer->src, start, (lexer->pos - start));
     lexer_offset(lexer, 1);
-    return init_lexer_token(str, TOKEN_TYPE_STRING_LITERAL, col, lexer->row, lexer->filename);
+    return init_lexer_token(str, TOKEN_TYPE_STRING_LITERAL, col, lexer);
 }
 
 lexer_token_t* lexer_get_token(lexer_t* lexer) {
@@ -295,5 +318,5 @@ lexer_token_t* lexer_get_token(lexer_t* lexer) {
         lexer_offset(lexer, 1);
 
     }
-    return init_lexer_token(NULL, TOKEN_TYPE_EOF, lexer->col, lexer->row, lexer->filename);
+    return init_lexer_token(NULL, TOKEN_TYPE_EOF, lexer->col, lexer);
 }

@@ -10,7 +10,7 @@ symbol_table_t* init_symbol_table() {
 
 symbol_entry_t* init_symbol_entry(string_t* type, string_t* name, string_t* sig,
                                   string_t* file, size_t col, size_t row,
-                                  ast_t* ast, bool is_function) {
+                                  ast_t* ast, bool is_function, bool is_accessed) {
     symbol_entry_t* this = calloc(1, sizeof(struct symbol_entry));
     this->type = type;
     this->name = name;
@@ -20,6 +20,7 @@ symbol_entry_t* init_symbol_entry(string_t* type, string_t* name, string_t* sig,
     this->row = row;
     this->ast = ast;
     this->is_function = is_function;
+    this->is_accessed = is_accessed;
     return this;
 }
 

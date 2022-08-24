@@ -55,7 +55,7 @@ typedef struct lexer_token {
     string_t* filename;
 } lexer_token_t;
 
-
+typedef struct preprocessor preprocessor_t;
 typedef struct lexer {
     string_t* filename;
     string_t* src;
@@ -63,12 +63,13 @@ typedef struct lexer {
     string_char_type ch;
     size_t col;
     size_t row;
+    preprocessor_t* preprocessor;
 } lexer_t;
 
 const char* token_type_str(int type);
 
-lexer_t* init_lexer(const char* filename, string_t* src);
-lexer_token_t* init_lexer_token(string_t* value, int type, size_t col, size_t row, string_t* filename);
+lexer_t* init_lexer(const char* filename, string_t* src, preprocessor_t* preprocessor);
+lexer_token_t* init_lexer_token(string_t* value, int type, size_t col, lexer_t* lexer);
 void lexer_free(lexer_t**);
 void dump_lexer_token(lexer_token_t* token);
 

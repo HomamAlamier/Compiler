@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <include/types.h>
 
-static int __ast_unique_id_counter = 0;
+static int __ast_unique_id_counter__ = 0;
 
 typedef struct key_val {
     const char* k;
@@ -33,8 +33,10 @@ const char* ast_type_str(int type){
     case AST_TYPE_FUNCTION: return "AST_TYPE_FUNCTION";
     case AST_TYPE_ASM_FUNCTION: return "AST_TYPE_ASM_FUNCTION";
     case AST_TYPE_VARIABLE: return "AST_TYPE_VARIABLE";
+    case AST_TYPE_VARIABLE_ARRAY: return "AST_TYPE_VARIABLE_ARRAY";
     case AST_TYPE_CONSTANT: return "AST_TYPE_CONSTANT";
     case AST_TYPE_ACCESS: return "AST_TYPE_ACCESS";
+    case AST_TYPE_ACCESS_ARRAY: return "AST_TYPE_ACCESS_ARRAY";
     case AST_TYPE_TEMPLATE: return "AST_TYPE_TEMPLATE";
     case AST_TYPE_RETURN: return "AST_TYPE_RETURN";
     case AST_TYPE_ASSIGNMENT: return "AST_TYPE_ASSIGNMENT";
@@ -49,24 +51,26 @@ const char* ast_type_str(int type){
 }
 
 
-complex_data_type_t* init_complex_data_type(string_t* name) {
+complex_data_type_t* init_complex_data_type(string_t* name, bool is_array, int array_size) {
     complex_data_type_t* type = calloc(1, sizeof(struct complex_data_type));
     type->name = name;
     type->template = NULL;
     type->size = find_type_size(name);
+    type->is_array = is_array;
+    type->array_size = array_size;
     return type;
 }
 
 ast_t* init_ast(int type) {
     ast_t* ast = calloc(1, sizeof(struct ast));
-    ast->unique_id = __ast_unique_id_counter;
-    ++__ast_unique_id_counter;
+    ast->unique_id = __ast_unique_id_counter__++;
     ast->type = type;
     ast->childs = init_list();
     ast->data_type = NULL;
     ast->name = NULL;
     ast->value = NULL;
     ast->parent = NULL;
+    ast->index = NULL;
     return ast;
 }
 

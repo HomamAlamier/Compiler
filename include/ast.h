@@ -12,8 +12,10 @@ enum ast_type {
     AST_TYPE_FUNCTION,
     AST_TYPE_ASM_FUNCTION,
     AST_TYPE_VARIABLE,
+    AST_TYPE_VARIABLE_ARRAY,
     AST_TYPE_CONSTANT,
     AST_TYPE_ACCESS,
+    AST_TYPE_ACCESS_ARRAY,
     AST_TYPE_TEMPLATE,
     AST_TYPE_RETURN,
     AST_TYPE_ASSIGNMENT,
@@ -28,6 +30,8 @@ enum ast_type {
 typedef struct complex_data_type {
     string_t* name;
     struct ast* template;
+    bool is_array;
+    int array_size;
     int size;
 } complex_data_type_t;
 
@@ -38,13 +42,14 @@ typedef struct ast {
     string_t* name;
     struct ast* value;
     struct ast* parent;
+    struct ast* index;
     lexer_token_t* token;
     void* data;
     complex_data_type_t* data_type;
 } ast_t;
 
 const char* ast_type_str(int type);
-complex_data_type_t* init_complex_data_type(string_t* name);
+complex_data_type_t* init_complex_data_type(string_t* name, bool is_array, int array_size);
 ast_t* init_ast(int type);
 
 void dump_ast(ast_t* ast);

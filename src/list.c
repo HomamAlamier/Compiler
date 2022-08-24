@@ -35,6 +35,18 @@ void list_free(list_t** list, bool free_data) {
     *list = NULL;
 }
 
+void list_free_data(list_t* list) {
+    list_node_t* node = list->top;
+    while(node) {
+        list_node_t* tmp = node;
+        node = node->next;
+        free(tmp->data);
+        free(tmp);
+    }
+    list->top = NULL;
+    list->bottom = NULL;
+}
+
 void* list_index_data(list_t* list, size_t index) {
     list_node_t* node = list->top;
     for(size_t i = 0; i < list->size; ++i) {
